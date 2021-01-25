@@ -60,6 +60,7 @@ private:
   bool bDoParseIndex;
   bool bIndexed;
   bool bIterative;
+  bool bParseAbort;
   bool bParseIndexList;
   mzMLElement elSkip;
   std::string elements[MZML_NUM_ELEMENTS];

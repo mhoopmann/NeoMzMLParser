@@ -74,14 +74,21 @@ void NeoMzMLParser::endElement(const XML_Char *el) {
   }
 
   if (isElement("indexList", el)) {
-    if (bParseIndexList) XML_StopParser(parser, false);
+    if (bParseIndexList) {
+      bParseAbort = true;
+      XML_StopParser(parser, false);
+    }
 
   } else if (isElement("mzML", el)) {
+    bParseAbort = true;
     XML_StopParser(parser, false);
 
   } else if (isElement("spectrum", el)) {
-    if (bIterative) XML_StopParser(parser, false);
-  } 
+    if (bIterative) {
+      bParseAbort = true;
+      XML_StopParser(parser, false);
+    }
+  }
 
   
 }
@@ -103,7 +110,7 @@ CnmzSpectrum* NeoMzMLParser::nextSpectrum(bool buffered){
   if(scanIndex>=indexedmzML.indexList.index[spectrumIndexID].offset.size()){
     return NULL;
   } else {
-    parse(_atoi64(indexedmzML.indexList.index[spectrumIndexID].offset[scanIndex].content.c_str()));
+    parse(atoll(indexedmzML.indexList.index[spectrumIndexID].offset[scanIndex].content.c_str()));
   }
   return &mzML.run.spectrumList.spectrum.back();
 }
@@ -114,6 +121,7 @@ void NeoMzMLParser::init() {
   bIndexed=false;
   bIterative=false;
   bParseIndexList=false;
+  bParseAbort=true;
 
   elements[mzActivation] = "activation"; 
   elements[mzAnalyzer] = "analyzer";
@@ -174,6 +182,7 @@ void NeoMzMLParser::parse(f_off_nmz offset) {
   XML_SetCharacterDataHandler(parser, NeoMzMLParser_charactersCallback);
 
   nmzfseek(xml_fptr, offset, SEEK_SET);
+  bParseAbort=false;
 
   char buffer[16384];
   int readBytes = 0;
@@ -187,7 +196,7 @@ void NeoMzMLParser::parse(f_off_nmz offset) {
   if (!success) {
     XML_Error error = XML_GetErrorCode(parser);
 
-    if (error == XML_ERROR_ABORTED){
+    if (bParseAbort && (error == XML_ERROR_ABORTED || error == XML_ERROR_FINISHED)) {
       //cout << "Aborted is ok" << endl;
     } else xmlError(error);
   }
@@ -466,6 +475,7 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
       indexedmzML.xmlns_xsi = getAttrValue("xmlns:xsi", attr);
       indexedmzML.xsi_schemaLocation = getAttrValue("xsi:schemaLocation", attr);
       bDoParseIndex=true;
+      bParseAbort = true;
       XML_StopParser(parser,false);
     }
 
@@ -672,7 +682,10 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
     c.count=atoi(getAttrValue("count",attr));
     c.defaultDataProcessingRef = getAttrValue("defaultDataProcessingRef", attr);
     mzML.run.spectrumList = c;
-    if (bIterative) XML_StopParser(parser, false);
+    if (bIterative) {
+      bParseAbort = true;
+      XML_StopParser(parser, false);
+    }
     //if(bIterative) elSkip=mzSpectrumList;
 
   } else if (isElement("userParam", el)){
