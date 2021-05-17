@@ -21,6 +21,7 @@ void CnmzMzML::write(FILE* f, int tabs,bool iterative){
   cvList.write(f,t,iterative);
   fileDescription.write(f,t,iterative);
   for (size_t a = 0; a<referencableParamGroupList.size(); a++) referencableParamGroupList[a].write(f, t, iterative);
+  if(!sampleList.empty()) sampleList[0].write(f,t,iterative);
   softwareList.write(f,t,iterative);
   instrumentConfigurationList.write(f,t,iterative);
   dataProcessingList.write(f,t,iterative);

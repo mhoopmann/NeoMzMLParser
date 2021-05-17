@@ -155,6 +155,8 @@ void NeoMzMLParser::init() {
   elements[mzReferenceableParamGroupList] = "referenceableParamGroupList";
   elements[mzReferenceableParamGroupRef] = "referenceableParamGroupRef";
   elements[mzRun] = "run";
+  elements[mzSample] = "sample";
+  elements[mzSampleList] = "sampleList";
   elements[mzScan] = "scan";
   elements[mzScanList] = "scanList";
   elements[mzScanWindow] = "scanWindow";
@@ -274,6 +276,9 @@ void NeoMzMLParser::processCvParam(CnmzCvParam& c){
   case mzReferenceableParamGroup:
     mzML.referencableParamGroupList.back().referenceableParamGroup.back().cvParam.push_back(c);
     break;
+  case mzSample:
+    mzML.sampleList.back().sample.back().cvParam.push_back(c);
+    break;
   case mzScan:
     mzML.run.spectrumList.spectrum.back().scanList.back().scan.back().cvParam.push_back(c);
     break;
@@ -332,6 +337,9 @@ void NeoMzMLParser::processUserParam(CnmzUserParam& c){
     break;
   case mzReferenceableParamGroup:
     mzML.referencableParamGroupList.back().referenceableParamGroup.back().userParam.push_back(c);
+    break;
+  case mzSample:
+    mzML.sampleList.back().sample.back().userParam.push_back(c);
     break;
   case mzScan:
     mzML.run.spectrumList.spectrum.back().scanList.back().scan.back().userParam.push_back(c);
@@ -589,6 +597,19 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
     mzML.run=c;
     //if(bIterative) XML_StopParser(parser,false);
 
+  } else if (isElement("sample", el)){
+    activeEl.push_back(mzSample);
+    CnmzSample c;
+    c.id = getAttrValue("id", attr);
+    c.name = getAttrValue("name", attr);
+    mzML.sampleList.back().sample.push_back(c);
+
+  } else if (isElement("sampleList", el)){
+    activeEl.push_back(mzSampleList);
+    CnmzSampleList c;
+    c.count = atoi(getAttrValue("count", attr));
+    mzML.sampleList.push_back(c);
+
   } else if (isElement("scan", el)){
     activeEl.push_back(mzScan);
     CnmzScan c;
@@ -602,7 +623,9 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
     activeEl.push_back(mzScanList);
     CnmzScanList c;
     c.count = atoi(getAttrValue("count", attr));
-    mzML.run.spectrumList.spectrum.back().scanList.push_back(c);
+    if(c.count==0){
+      std::cerr << "WARNING: spectrum::scanList for spectrum::id=" << mzML.run.spectrumList.spectrum.back().id << " must have at least one scan. Removing this scanList." << std::endl;
+    } else mzML.run.spectrumList.spectrum.back().scanList.push_back(c);
 
   } else if (isElement("scanWindow", el)){
     activeEl.push_back(mzScanWindow);
@@ -645,6 +668,10 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
     CnmzSoftware c;
     c.id = getAttrValue("id", attr);
     c.version = getAttrValue("version", attr);
+    if(c.version.empty()){
+      std::cerr << "WARNING: software::version was empty when reading mzML. Setting value to 0." << std::endl;
+      c.version="0";
+    }
     mzML.softwareList.software.push_back(c);
 
   } else if (isElement("softwareList", el)){

@@ -8,6 +8,7 @@
 #include "CnmzInstrumentConfigurationList.h"
 #include "CnmzReferenceableParamGroupList.h"
 #include "CnmzRun.h"
+#include "CnmzSampleList.h"
 #include "CnmzSoftwareList.h"
 
 #include <string>
@@ -21,7 +22,7 @@ public:
   CnmzCvList cvList;
   CnmzFileDescription fileDescription;
   std::vector<CnmzReferenceableParamGroupList> referencableParamGroupList;
-  //std::vector<CnmzSampleList> sampleList;
+  std::vector<CnmzSampleList> sampleList;
   CnmzSoftwareList softwareList;
   //std::vector<CnmzScanSettingsList> scanSettingsList;
   CnmzInstrumentConfigurationList instrumentConfigurationList;

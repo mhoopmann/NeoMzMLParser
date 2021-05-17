@@ -39,6 +39,8 @@ enum mzMLElement :int{
   mzReferenceableParamGroupList,
   mzReferenceableParamGroupRef,
   mzRun,
+  mzSample,
+  mzSampleList,
   mzScan,
   mzScanList,
   mzScanWindow,
