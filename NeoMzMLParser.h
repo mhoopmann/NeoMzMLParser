@@ -23,10 +23,11 @@ public:
   CnmzIndexedmzML indexedmzML;
   CnmzMzML mzML;
 
+  CnmzChromatogram* nextChromatogram(bool buffered = false);
   CnmzSpectrum* nextSpectrum(bool buffered=false);
   bool read(const char* fn, bool iterative=false);
   bool write(const char* fn, bool tabs = true, bool iterative = false);
-  //bool writeChromat()
+  bool writeChromatogram(CnmzChromatogram* chromat);
   mzMLWriteState writeNextState();
   bool writeSpectrum(CnmzSpectrum* spec);
   mzMLWriteState writeState();
@@ -55,6 +56,8 @@ protected:
 
 private:
 
+  size_t chromatIndex;
+  size_t chromatogramIndexID;
   size_t scanIndex;
   size_t spectrumIndexID;
   bool bDoParseIndex;
@@ -62,6 +65,8 @@ private:
   bool bIterative;
   bool bParseAbort;
   bool bParseIndexList;
+  bool bSpectrumList;
+  bool bChromatogramList;
   mzMLElement elSkip;
   std::string elements[MZML_NUM_ELEMENTS];
   std::string fileName;
@@ -71,13 +76,21 @@ private:
   //For writing
   bool bWIterative;
   bool bWTabs;
+  bool bWChromatList;
   int WSpecCount;
+  int WChromatCount;
   mzMLWriteState WState;
   FILE* Wptr;
-  CnmzIndexList WindexList;
+  CnmzIndexList* WindexList;
+  CnmzIndexListOffset WindexListOffset;
+  //CnmzSpectrumList WspectrumList;
+  //CnmzChromatogramList WchromatogramList;
+  CnmzFileChecksum WfileChecksum;
 
+  void createIndex();
   void init();
   void parse(f_off_nmz offset=0);
+  void parseChromatogramList();
   void parseIndex();
   void processCvParam(CnmzCvParam& c);
   void processUserParam(CnmzUserParam& c);

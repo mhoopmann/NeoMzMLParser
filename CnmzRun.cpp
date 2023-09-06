@@ -20,8 +20,9 @@ void CnmzRun::write(FILE* f, int tabs, bool iterative){
   int t = tabs;
   if (t>-1) t++;
   spectrumList.write(f, t, iterative);
-
+  
   if (iterative) return;
+  if(!chromatogramList.empty()) chromatogramList[0].write(f,t,iterative);
 
   NMZprintTabs(f, tabs);
   fprintf(f, "</run>\n");

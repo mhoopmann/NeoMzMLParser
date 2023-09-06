@@ -30,7 +30,14 @@ void NeoMzMLParser::characters(const XML_Char *s, int len) {
   case mzBinary: 
     strncpy(st, s, len);
     st[len] = '\0';
-    mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.back().binary.content += st;
+    if (activeEl[activeEl.size() - 4] == mzSpectrum) {
+      mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.back().binary.content += st;
+    } else if (activeEl[activeEl.size() - 4] == mzChromatogram) {
+      mzML.run.chromatogramList[0].chromatogram.back().binaryDataArrayList.binaryDataArray.back().binary.content += st;
+    } else {
+      cout << "ERROR: unhandled content of binary element." << endl;
+      exit(1);
+    }
     break;
   case mzFileChecksum:
     strncpy(st, s, len);
@@ -56,6 +63,27 @@ void NeoMzMLParser::characters(const XML_Char *s, int len) {
   delete [] st;
 }
 
+void NeoMzMLParser::createIndex(){
+  bIndexed = true;
+  indexedmzML.xmlns = "http://psi.hupo.org/ms/mzml";
+  indexedmzML.xmlns_xsi = "http://www.w3.org/2001/XMLSchema-instance";
+  indexedmzML.xsi_schemaLocation = "http://psi.hupo.org/ms/mzml http://psidev.info/files/ms/mzML/xsd/mzML1.1.2_idx.xsd";
+  indexedmzML.mzML=&mzML;
+  //always have a spectrumlist
+  CnmzIndex i;
+  i.name="spectrum";
+  indexedmzML.indexList.index.push_back(i);
+  mzML.run.spectrumList.spectrumIndex=&indexedmzML.indexList.index.back();
+  indexedmzML.indexList.count++;
+  //only index chromatogramlist if it exists
+  if(!mzML.run.chromatogramList.empty()){
+    i.name="chromatogram";
+    indexedmzML.indexList.index.push_back(i);
+    mzML.run.chromatogramList[0].chromatogramIndex = &indexedmzML.indexList.index.back();
+    indexedmzML.indexList.count++;
+  }
+}
+
 void NeoMzMLParser::endElement(const XML_Char *el) {
 
   if (elSkip != MZML_NUM_ELEMENTS){
@@ -73,7 +101,13 @@ void NeoMzMLParser::endElement(const XML_Char *el) {
     }
   }
 
-  if (isElement("indexList", el)) {
+  if (isElement("chromatogram", el)) {
+    if (bIterative) {
+      bParseAbort = true;
+      XML_StopParser(parser, false);
+    }
+
+  } else if (isElement("indexList", el)) {
     if (bParseIndexList) {
       bParseAbort = true;
       XML_StopParser(parser, false);
@@ -91,6 +125,30 @@ void NeoMzMLParser::endElement(const XML_Char *el) {
   }
 
   
+}
+
+CnmzChromatogram* NeoMzMLParser::nextChromatogram(bool buffered){
+  if (!bIterative) {
+    cerr << "WARNING: NeoMzMLParser::nextChromatogram(): mzML file must be opened in iterative mode." << endl;
+    return NULL;
+  }
+  if (!bIndexed) {
+    cerr << "WARNING: NeoMzMLParser::nextChromatogram(): mzML file must be indexed to use this funciton." << endl;
+    return NULL;
+  }
+  if (!buffered){
+    if(!mzML.run.chromatogramList.empty()) mzML.run.chromatogramList[0].chromatogram.clear();
+  }
+
+  if(chromatogramIndexID==SIZE_MAX) return NULL;
+
+  chromatIndex++;
+  if (chromatIndex >= indexedmzML.indexList.index[chromatogramIndexID].offset.size()){
+    return NULL;
+  } else {
+    parse(atoll(indexedmzML.indexList.index[chromatogramIndexID].offset[chromatIndex].content.c_str()));
+  }
+  return &mzML.run.chromatogramList[0].chromatogram.back();
 }
 
 CnmzSpectrum* NeoMzMLParser::nextSpectrum(bool buffered){
@@ -122,12 +180,14 @@ void NeoMzMLParser::init() {
   bIterative=false;
   bParseIndexList=false;
   bParseAbort=true;
+  WindexList=NULL;
 
   elements[mzActivation] = "activation"; 
   elements[mzAnalyzer] = "analyzer";
   elements[mzBinary] = "binary";
   elements[mzBinaryDataArray] = "binaryDataArray";
   elements[mzBinaryDataArrayList] = "binaryDataArrayList";
+  elements[mzChromatogram] = "chromatogram";
   elements[mzChromatogramList] = "chromatogramList";
   elements[mzComponentList] = "componentList";
   elements[mzCv] = "cv";
@@ -206,6 +266,25 @@ void NeoMzMLParser::parse(f_off_nmz offset) {
   XML_ParserFree(parser);
 }
 
+void NeoMzMLParser::parseChromatogramList(){
+  if (chromatogramIndexID == SIZE_MAX) return;
+  char buffer[300];
+  string s;
+  size_t sz;
+  f_off_nmz indexOffset = nmzatoi64(indexedmzML.indexList.index[chromatogramIndexID].offset[0].content.c_str());
+
+  nmzfseek(xml_fptr, indexOffset - 300, SEEK_SET);
+  sz = fread(buffer, 1, 300, xml_fptr);
+  buffer[299]='\0';
+  s = buffer;
+  sz = s.find("<chromatogramList");
+  if (sz == string::npos) {
+    cout << "ERROR: Cannot iteratively find chromatogramList" << endl;
+    exit(1);
+  }
+  parse(indexOffset-300 + sz);
+}
+
 void NeoMzMLParser::parseIndex(){
 
   char buffer[200];
@@ -256,7 +335,17 @@ void NeoMzMLParser::processCvParam(CnmzCvParam& c){
     mzML.instrumentConfigurationList.instrumentConfiguration.back().componentList.back().analyzer.back().cvParam.push_back(c);
     break;
   case mzBinaryDataArray:
-    mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.back().cvParam.push_back(c);
+    if(activeEl[activeEl.size()-4]==mzSpectrum){
+      mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.back().cvParam.push_back(c);
+    } else if (activeEl[activeEl.size() - 4] == mzChromatogram){
+      mzML.run.chromatogramList.back().chromatogram.back().binaryDataArrayList.binaryDataArray.back().cvParam.push_back(c);
+    } else {
+      cout << "Error: cvParam for BinaryDataArray cannot be assigned." << endl;
+      exit(1);
+    }
+    break;
+  case mzChromatogram:
+    mzML.run.chromatogramList.back().chromatogram.back().cvParam.push_back(c);
     break;
   case mzDetector:
     mzML.instrumentConfigurationList.instrumentConfiguration.back().componentList.back().detector.back().cvParam.push_back(c);
@@ -381,7 +470,14 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
   } else if (isElement("binary", el)){
     activeEl.push_back(mzBinary);
     CnmzBinary c;
-    mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.back().binary=c;
+    if (activeEl[activeEl.size() - 4] == mzSpectrum) {
+      mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.back().binary=c;
+    } else if (activeEl[activeEl.size() - 4] == mzChromatogram){
+      mzML.run.chromatogramList[0].chromatogram.back().binaryDataArrayList.binaryDataArray.back().binary = c;
+    } else {
+      cout << "Error: unknown parent of binary: " << activeEl[activeEl.size() - 4] << endl;
+      exit(1);
+    }
 
   } else if (isElement("binaryDataArray", el)){
     activeEl.push_back(mzBinaryDataArray);
@@ -389,18 +485,60 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
     c.arrayLength = atoi(getAttrValue("arrayLength", attr));
     c.encodedLength = atoi(getAttrValue("encodedLength", attr));
     c.dataProcessingRef = getAttrValue("dataProcessingRef", attr);
-    mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.push_back(c);
+    if (activeEl[activeEl.size() - 3] == mzSpectrum) {
+      mzML.run.spectrumList.spectrum.back().binaryDataArrayList.back().binaryDataArray.push_back(c);
+    } else if (activeEl[activeEl.size() - 3] == mzChromatogram){
+      mzML.run.chromatogramList.back().chromatogram.back().binaryDataArrayList.binaryDataArray.push_back(c);
+    } else {
+      cout << "Error: unknown parent of binaryDataArray: " << activeEl[activeEl.size() - 3] << endl;
+      exit(1);
+    }
 
   } else if (isElement("binaryDataArrayList", el)){
     activeEl.push_back(mzBinaryDataArrayList);
     CnmzBinaryDataArrayList c;
     c.count = atoi(getAttrValue("count", attr));
-    mzML.run.spectrumList.spectrum.back().binaryDataArrayList.push_back(c);
+    if (activeEl[activeEl.size() - 2]==mzSpectrum) {
+      mzML.run.spectrumList.spectrum.back().binaryDataArrayList.push_back(c);
+    } else if (activeEl[activeEl.size() - 2] == mzChromatogram){
+      mzML.run.chromatogramList.back().chromatogram.back().binaryDataArrayList=c;
+    } else {
+      cout << "Error: unknown parent of binaryDataArrayList: " << activeEl[activeEl.size() - 2] << endl;
+      exit(1);
+    }
+
+  } else if (isElement("chromatogram", el)) {
+    activeEl.push_back(mzChromatogram);
+    CnmzChromatogram c;
+    c.dataProcessingRef=getAttrValue("dataProcessingRef",attr);
+    c.defaultArrayLength = atoi(getAttrValue("defaultArrayLength", attr));
+    c.id = getAttrValue("id", attr);
+    c.index = atoi(getAttrValue("index", attr));
+    mzML.run.chromatogramList.back().chromatogram.push_back(c);
 
   } else if (isElement("chromatogramList", el)){
     activeEl.push_back(mzChromatogramList);
-
-    if (bIterative) elSkip = mzChromatogramList;
+    bChromatogramList=true;
+    CnmzChromatogramList c;
+    c.defaultDataProcessingRef = getAttrValue("defaultDataProcessingRef", attr);
+    c.count = atoi(getAttrValue("count", attr));
+    mzML.run.chromatogramList.push_back(c);
+    if (bIndexed) {
+      size_t a=0;
+      for(a=0;a<indexedmzML.indexList.index.size();a++){
+        if(indexedmzML.indexList.index[a].name.compare("chromatogram")==0) break;
+      }
+      if (a == indexedmzML.indexList.index.size()){
+        cout << "Error: chromatogram index is missing or mislabeled." << endl;
+        exit(1);
+      }
+      mzML.run.chromatogramList[0].chromatogramIndex = &indexedmzML.indexList.index[a];
+    }
+    if (bIterative) {
+      bParseAbort = true;
+      XML_StopParser(parser, false);
+    }
+    //if (bIterative) elSkip = mzChromatogramList;
 
   } else if (isElement("componentList", el)){
     activeEl.push_back(mzComponentList);
@@ -473,6 +611,10 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
     indexedmzML.indexList.index.push_back(c);
     if (indexedmzML.indexList.index.back().name.compare("spectrum")==0){
       spectrumIndexID = indexedmzML.indexList.index.size()-1;
+    } else if (indexedmzML.indexList.index.back().name.compare("chromatogram") == 0){
+      chromatogramIndexID = indexedmzML.indexList.index.size() - 1;
+    } else {
+      cout << "ERROR: Unknown index name: " << c.name << " - Valid names are (case-sensitive) spectrum or chromatogram" << endl;
     }
 
   } else if (isElement("indexedmzML", el)){
@@ -705,10 +847,22 @@ void NeoMzMLParser::startElement(const XML_Char *el, const XML_Char **attr){
 
   } else if (isElement("spectrumList", el)){
     activeEl.push_back(mzSpectrumList);
+    bSpectrumList=true;
     CnmzSpectrumList c;
     c.count=atoi(getAttrValue("count",attr));
     c.defaultDataProcessingRef = getAttrValue("defaultDataProcessingRef", attr);
     mzML.run.spectrumList = c;
+    if (bIndexed) {
+      size_t a = 0;
+      for (a = 0; a<indexedmzML.indexList.index.size(); a++){
+        if (indexedmzML.indexList.index[a].name.compare("spectrum") == 0) break;
+      }
+      if (a == indexedmzML.indexList.index.size()){
+        cout << "Error: spectrum index is missing or mislabeled." << endl;
+        exit(1);
+      }
+      mzML.run.spectrumList.spectrumIndex = &indexedmzML.indexList.index[a];
+    }
     if (bIterative) {
       bParseAbort = true;
       XML_StopParser(parser, false);
@@ -744,17 +898,64 @@ bool NeoMzMLParser::read(const char* fn, bool iterative){
   fileName=fn;
 
   scanIndex=-1;
+  chromatIndex=-1;
   bDoParseIndex=false;
   bIterative=iterative;
   bParseIndexList = false;
   elSkip = MZML_NUM_ELEMENTS;
+  chromatogramIndexID=SIZE_MAX;
+  bSpectrumList=false;
+  bChromatogramList=false;
 
   parse(0);
   if(bDoParseIndex) {
     parseIndex();
     parse(0);
+
+    if(!bChromatogramList) parseChromatogramList();
   }
 
+  return true;
+}
+
+bool NeoMzMLParser::writeChromatogram(CnmzChromatogram* chromat){
+  if (WState!=mzWS_Chromat){
+    cout << "ERROR: Attempting iterative writing of chromatogram in the wrong state." << endl;
+    return false;
+  }
+
+  if(!bWChromatList){
+    if (bWTabs)mzML.run.chromatogramList[0].write(Wptr, 3, true);
+    else mzML.run.chromatogramList[0].write(Wptr, -1, true);
+    bWChromatList=true;
+  }
+
+  int t = -1;
+  if (bWTabs) t = 4;
+  size_t a;
+  for (a = 0; a<indexedmzML.indexList.count; a++){
+    if (indexedmzML.indexList.index[a].name.compare("chromatogram") == 0) break;
+  }
+
+  //make index if needed
+  if (WindexList->count==1){
+    CnmzIndex c;
+    c.name = "chromatogram";
+    WindexList->index.push_back(c);
+    //mzML.run.chromatogramList[0].chromatogramIndex=&indexedmzML.indexList.index.back();
+    WindexList->count++;
+  }
+
+  //addOffset
+  int tIndex=chromat->index;
+  chromat->index=WChromatCount;
+  CnmzOffset o;
+  o.idRef = chromat->id;
+  o.content = to_string(nmzftell(Wptr));
+  WindexList->index[1].offset.push_back(o);
+  chromat->write(Wptr, t);
+  WChromatCount++;
+  chromat->index=tIndex;
   return true;
 }
 
@@ -767,26 +968,47 @@ mzMLWriteState NeoMzMLParser::writeNextState(){
     WState=mzWS_Chromat;
     break;
   case mzWS_Chromat:
-    //if (bWTabs) NMZprintTabs(Wptr, 3);
-    //fprintf(Wptr, "</chromatogramList>\n");
+    if(bWChromatList) {
+      if (bWTabs) NMZprintTabs(Wptr, 3);
+      fprintf(Wptr, "</chromatogramList>\n");
+    }
+    WState=mzWS_Run;
+    break;
+  case mzWS_Run:
     if (bWTabs) NMZprintTabs(Wptr, 2);
     fprintf(Wptr, "</run>\n");
     if (bWTabs) NMZprintTabs(Wptr, 1);
     fprintf(Wptr, "</mzML>\n");
     if(bWTabs) t=1;
-    indexedmzML.indexList=WindexList;
-    indexedmzML.indexList.write(Wptr,t);
-    indexedmzML.indexListOffset.content=to_string(indexedmzML.indexList.getIndexListOffset());
-    indexedmzML.indexListOffset.write(Wptr, t);
-    indexedmzML.fileChecksum.content="nochecksum";
-    indexedmzML.fileChecksum.write(Wptr,t);
+    WindexList->write(Wptr,t,true);
+    WindexListOffset.content = to_string(WindexList->getIndexListOffset());
+    WindexListOffset.write(Wptr,t,true);
+    WfileChecksum.content.clear();
+    WfileChecksum.write(Wptr,t,true);
+    //indexedmzML.indexList.write(Wptr,t);
+    //indexedmzML.indexListOffset.content=to_string(indexedmzML.indexList.getIndexListOffset());
+    //indexedmzML.indexListOffset.write(Wptr, t);
+    //indexedmzML.fileChecksum.content="nochecksum";
+    //indexedmzML.fileChecksum.write(Wptr,t);
     fprintf(Wptr,"</indexedmzML>\n");
-    mzML.run.spectrumList.count=WSpecCount;
-    mzML.run.spectrumList.writeUpdate(Wptr);
+    //WspectrumList.count=WSpecCount;
+    //WspectrumList.writeUpdate(Wptr);
+    //mzML.run.spectrumList.count=WSpecCount;
+    mzML.run.spectrumList.writeUpdate(Wptr,WSpecCount);
+    //if (bWChromatList){
+    //  WchromatogramList.count=WChromatCount;
+    //  WchromatogramList.writeUpdate(Wptr);
+    //}
+    if(!mzML.run.chromatogramList.empty()) {
+      //mzML.run.chromatogramList[0].count=WChromatCount;
+      mzML.run.chromatogramList[0].writeUpdate(Wptr,WChromatCount);
+    }
     fclose(Wptr);
     Wptr=NULL;
-    WindexList.index.clear();
     WState=mzWS_Done;
+    //Clear all temporary lists
+    delete WindexList;
+    WindexList=NULL;
     break;
   default:
     break;
@@ -795,28 +1017,32 @@ mzMLWriteState NeoMzMLParser::writeNextState(){
 }
 
 bool NeoMzMLParser::writeSpectrum(CnmzSpectrum* spec){
+  if (WState != mzWS_Spectrum){
+    cout << "ERROR: Attempting iterative writing of chromatogram in the wrong state." << endl;
+    return false;
+  }
   int t=-1;
   if (bWTabs) t=4;
-  size_t a;
-  for(a=0;a<WindexList.count;a++){
-    if(WindexList.index[a].name.compare("spectrum")==0) break;
-  }
-
+  
   //make index if needed
-  if (a == WindexList.count){
+  if(WindexList->count==0){
     CnmzIndex c;
     c.name = "spectrum";
-    WindexList.index.push_back(c);
-    WindexList.count++;
+    WindexList->index.push_back(c);
+    //mzML.run.spectrumList.spectrumIndex = &indexedmzML.indexList.index.back();
+    WindexList->count++;
   }
 
-  //addOffset
+  //addOffset - also temporarily set the index to the next one
+  int tIndex=spec->index;
+  spec->index = WSpecCount;
   CnmzOffset o;
   o.idRef=spec->id;
   o.content = to_string(nmzftell(Wptr));
-  WindexList.index[a].offset.push_back(o);
+  WindexList->index[0].offset.push_back(o);
   spec->write(Wptr,t);
   WSpecCount++;
+  spec->index=tIndex;
   return true;
 }
 
@@ -830,9 +1056,10 @@ bool NeoMzMLParser::write(const char* fn, bool tabs, bool iterative){
 
   bWTabs=tabs;
   bWIterative=iterative;
+  bWChromatList=false;
 
   if(!bIndexed) {
-    //createIndex();
+    createIndex();
   }
 
   fprintf(Wptr, "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n");
@@ -841,9 +1068,11 @@ bool NeoMzMLParser::write(const char* fn, bool tabs, bool iterative){
 
   if(iterative) {
     WState=mzWS_Spectrum;
-    WindexList.index.clear();
-    WindexList.count=0;
+    WindexList = new CnmzIndexList();
+    //indexedmzML.indexList.index.clear();
+    //indexedmzML.indexList.count=0;
     WSpecCount=0;
+    WChromatCount=0;
   } else {
     fclose(Wptr);
     Wptr=NULL;

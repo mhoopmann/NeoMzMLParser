@@ -6,7 +6,7 @@ void CnmzProcessingMethod::write(FILE* f, int tabs, bool iterative){
   //required
   string el = "processingMethod";
   if (order<-999) NMZerrMsg(el, "order");
-  if (softwareRef.empty()) NMZerrMsg(el, "order");
+  if (softwareRef.empty()) NMZerrMsg(el, "softwareRef");
 
   NMZprintTabs(f, tabs);
   fprintf(f, "<processingMethod");

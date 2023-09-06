@@ -20,6 +20,7 @@ void CnmzIndexedmzML::write(FILE* f, int tabs, bool iterative){
   if (iterative) return;
 
   indexList.write(f,t,iterative);
+  indexListOffset.content=to_string(indexList.getIndexListOffset());
   indexListOffset.write(f,t,iterative);
   fileChecksum.write(f,t,iterative);
 

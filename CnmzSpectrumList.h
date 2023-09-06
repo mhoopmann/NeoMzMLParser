@@ -2,6 +2,7 @@
 #define _CNMZSPECTRUMLIST_H
 
 #include "NeoMzMLStructs.h"
+#include "CnmzIndex.h"
 #include "CnmzSpectrum.h"
 
 #include <string>
@@ -10,9 +11,12 @@
 class CnmzSpectrumList {
 public:
 
-  void write(FILE* f, int tabs = -1, bool interative=false);
-  void writeUpdate(FILE* f);
+  CnmzSpectrumList();
 
+  void write(FILE* f, int tabs = -1, bool interative=false);
+  void writeUpdate(FILE* f, int num);
+
+  CnmzIndex* spectrumIndex;
   std::vector<CnmzSpectrum> spectrum;
 
   int count;

@@ -1,5 +1,5 @@
-#ifndef NEOPEPXMLSTRUCTS_H
-#define NEOPEPXMLSTRUCTS_H
+#ifndef NEOMZMLSTRUCTS_H
+#define NEOMZMLSTRUCTS_H
 
 #include <string>
 #include <stdio.h>
@@ -12,6 +12,7 @@ enum mzMLElement :int{
   mzBinary,
   mzBinaryDataArray,
   mzBinaryDataArrayList,
+  mzChromatogram,
   mzChromatogramList,
   mzComponentList,
   mzCv,
@@ -62,6 +63,7 @@ enum mzMLElement :int{
 enum mzMLWriteState{
   mzWS_Spectrum,
   mzWS_Chromat,
+  mzWS_Run,
   mzWS_Done
 };
 

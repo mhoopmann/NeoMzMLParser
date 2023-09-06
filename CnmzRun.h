@@ -3,6 +3,7 @@
 
 #include "NeoMzMLStructs.h"
 #include "CnmzSpectrumList.h"
+#include "CnmzChromatogramList.h"
 
 
 #include <string>
@@ -17,7 +18,7 @@ public:
   //std::vector<CnmzCvParam> cvParam;
   //std::vector<CnmzUserParam> userParam;
   CnmzSpectrumList spectrumList;
-  //CnmzChromatogramList chromatogramList;
+  std::vector<CnmzChromatogramList> chromatogramList;
 
   std::string defaultInstrumentConfigurationRef;
   std::string defaultSourceFileRef;

@@ -2,6 +2,11 @@
 
 using namespace std;
 
+CnmzSpectrumList::CnmzSpectrumList(){
+  count=0;
+  spectrumIndex=NULL;
+}
+
 void CnmzSpectrumList::write(FILE* f, int tabs, bool iterative){
   //required
   string el = "spectrumList";
@@ -21,15 +26,22 @@ void CnmzSpectrumList::write(FILE* f, int tabs, bool iterative){
 
   int t = tabs;
   if (t>-1) t++;
-  //for(size_t a=0;a<spectrum.size();a++) spectrum[a].write(f, t, iterative);
+  if(spectrumIndex!=NULL) spectrumIndex->offset.clear();
+  for(size_t a=0;a<spectrum.size();a++) {
+    CnmzOffset o;
+    o.idRef = spectrum[a].id;
+    o.content = to_string(nmzftell(f));
+    spectrumIndex->offset.push_back(o);
+    spectrum[a].write(f, t, iterative);
+  }
 
   NMZprintTabs(f, tabs);
   fprintf(f, "</spectrumList>\n");
 
 }
 
-void CnmzSpectrumList::writeUpdate(FILE* f){
+void CnmzSpectrumList::writeUpdate(FILE* f, int num){
   nmzfseek(f, fptr, 0);
   //cout << "Update: " << count << endl;
-  fprintf(f, "%.10d", count);
+  fprintf(f, "%.10d", num);
 }
